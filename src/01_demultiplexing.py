@@ -53,6 +53,45 @@ def _check_fragment_file_formatting(fragment_fil):
             logging.info('Skipping lines {} since they look like header text'.format(idx))
             return idx
 
+# Make pseudo-replicates from fragment df
+def _assign_insertion_sites(frag_df):
+
+    '''
+    Splits fragment file into two random subsets of Tn5 sites.
+    '''
+
+    start_df, end_df = frag_df.copy(), frag_df.copy()
+
+    start_df['end'] = start_df['start']+1
+    start_df = start_df.sample(frac=1)
+
+    end_df['start'] = start_df['end']-1
+    end_df = end_df.sample(frac=1)
+
+    pseudo_rep_1 = pd.concat([start_df.iloc[:int(start_df.shape[0]/2)], 
+                              end_df.iloc[int(end_df.shape[0]/2):]])
+    pseudo_rep_2 = pd.concat([start_df.iloc[int(start_df.shape[0]/2):], 
+                              end_df.iloc[:int(end_df.shape[0]/2)]])
+
+    return pseudo_rep_1, pseudo_rep_2
+
+# Util functions
+def _write_chunk(frag_df, output_loc, nam):
+
+    frag_df.to_csv(os.path.join(output_loc, 
+                                '{}.txt'.format(nam)),
+                   sep='\t', header=False, index=False)
+
+def _cat_files(fils, output_loc, output_nam):
+
+    out_path = os.path.join(output_loc, output_nam)
+
+    with open(out_path,'w') as f:
+        for chunk in fils:
+            with open(os.path.join(output_loc, chunk)) as infile:
+                f.write(infile.read())
+    f.close()
+
 # Function to demultiplex - create temp chunks
 def _demultiplex_fragment_file(frag_df,
                                barcodes_df,
@@ -74,15 +113,21 @@ def _demultiplex_fragment_file(frag_df,
 
     # Output group-wise files for each chunk
     for group in frag_df.groups.unique():
+
+        # Output fragments
         frag_df_ = frag_df.loc[frag_df.groups==group, 
                                ['chr', 'start', 'end', 'barcodes']]
-        frag_df_.to_csv(os.path.join(output_loc, 
-                                     '{}_{}_{}.txt'.format(group, 
-                                                           frag_nam, 
-                                                           ''.join(random.choice(string.ascii_uppercase)\
-                                                           for i in range(10)))),
-                        sep='\t', header=False, index=False)
-                    
+
+        rand_string = ''.join(random.choice(string.ascii_uppercase)\
+                      for i in range(10))
+        _write_chunk(frag_df_, output_loc, group+'_'+frag_nam+'_'+rand_string)
+
+        # Output pseudo-reps
+        pseudo_rep_1, pseudo_rep_2 = _assign_insertion_sites(frag_df_)
+
+        _write_chunk(pseudo_rep_1, output_loc, group+'_pseudorep1_'+frag_nam+'_'+rand_string)
+        _write_chunk(pseudo_rep_1, output_loc, group+'_pseudorep2_'+frag_nam+'_'+rand_string)
+            
 # Demultiplex fragment file - parallel over chunks
 def demultiplex_fragment_file(fragment_fil, 
                               barcodes_df, 
@@ -119,6 +164,8 @@ def demultiplex_fragment_file(fragment_fil,
     frag_nam = os.path.basename(fragment_fil)  
     if output_loc is None:
         output_loc = os.path.dirname(fragment_fil)
+    if len(os.listdir(output_loc)) > 0:
+        logging.warn('Remove outputs from any previous runs to avoid duplications.')
         
     # Make chunk generator
     with warnings.catch_warnings():
@@ -175,20 +222,27 @@ def collate_fragment_file(fil_loc,
     # Collate chunks per group
     for group in tqdm(group_labels, unit='groups', desc='Collating demultiplexed chunks'):
 
-        group_fils = [fil for fil in fils if group in fil]
+        # Collate fragments
+        group_fils = [fil for fil in fils if group in fil and 'pseudorep' not in fil]
 
         fil_nam = group+'_fragments.txt'
-        out_path = os.path.join(fil_loc, fil_nam)
+        _cat_files(group_fils, fil_loc, fil_nam)
 
-        with open(out_path,'w') as f:
-            for chunk in group_fils:
-                with open(os.path.join(fil_loc, chunk)) as infile:
-                    f.write(infile.read())
-        f.close()
+        # Collate pseudoreps
+        pseudorep1_fils = [fil for fil in fils if group in fil and 'pseudorep1' in fil]
+
+        fil_nam = group+'_pseudorep1.txt'
+        _cat_files(pseudorep1_fils, fil_loc, fil_nam)
+
+        pseudorep2_fils = [fil for fil in fils if group in fil and 'pseudorep2' in fil]
+
+        fil_nam = group+'_pseudorep2.txt'
+        _cat_files(pseudorep2_fils, fil_loc, fil_nam)
 
         # Remove chunks
         if remove_chunks:
-            for chunk in group_fils:
+            remove_fils = group_fils + pseudorep1_fils + pseudorep2_fils
+            for chunk in remove_fils:
                 os.system('rm {}'.format(os.path.join(fil_loc, chunk)))
 
 if __name__=='__main__':
