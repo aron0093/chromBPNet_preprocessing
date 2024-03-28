@@ -244,6 +244,11 @@ def collate_fragment_file(fil_loc,
         fil_nam = group+'_pseudorep2.txt'
         _cat_files(pseudorep2_fils, fil_loc, fil_nam)
 
+        fil_nam = group+'_pseudorepT.txt'
+        _cat_files([os.path.join(fil_loc, group+'_pseudorep1.txt'),
+                    os.path.join(fil_loc, group+'_pseudorep2.txt')],
+                    fil_loc, fil_nam)
+
         # Remove chunks
         if remove_chunks:
             remove_fils = group_fils + pseudorep1_fils + pseudorep2_fils
