@@ -53,6 +53,23 @@ def _check_fragment_file_formatting(fragment_fil):
             logging.info('Skipping lines {} since they look like header text'.format(idx))
             return idx
 
+# Util functions
+def _write_chunk(frag_df, output_loc, nam):
+
+    frag_df.to_csv(os.path.join(output_loc, 
+                                '{}.txt'.format(nam)),
+                   sep='\t', header=False, index=False)
+
+def _cat_files(fils, output_loc, output_nam):
+
+    out_path = os.path.join(output_loc, output_nam)
+
+    with open(out_path,'w') as f:
+        for chunk in fils:
+            with open(os.path.join(output_loc, chunk)) as infile:
+                f.write(infile.read())
+    f.close()
+
 # Make pseudo-replicates from fragment df
 def _assign_insertion_sites(frag_df):
 
@@ -74,23 +91,6 @@ def _assign_insertion_sites(frag_df):
                               end_df.iloc[:int(end_df.shape[0]/2)]])
 
     return pseudo_rep_1, pseudo_rep_2
-
-# Util functions
-def _write_chunk(frag_df, output_loc, nam):
-
-    frag_df.to_csv(os.path.join(output_loc, 
-                                '{}.txt'.format(nam)),
-                   sep='\t', header=False, index=False)
-
-def _cat_files(fils, output_loc, output_nam):
-
-    out_path = os.path.join(output_loc, output_nam)
-
-    with open(out_path,'w') as f:
-        for chunk in fils:
-            with open(os.path.join(output_loc, chunk)) as infile:
-                f.write(infile.read())
-    f.close()
 
 # Function to demultiplex - create temp chunks
 def _demultiplex_fragment_file(frag_df,
