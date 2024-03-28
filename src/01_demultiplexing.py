@@ -118,15 +118,21 @@ def _demultiplex_fragment_file(frag_df,
         frag_df_ = frag_df.loc[frag_df.groups==group, 
                                ['chr', 'start', 'end', 'barcodes']]
 
+        # Skip empty chunks
+        if frag_df_.shape[0]==0:
+            logging.warn('No barcodes were matched to a group in this chunk!')
+            continue
+
+        # Add random string to chunk since outputs are not in order
         rand_string = ''.join(random.choice(string.ascii_uppercase)\
                       for i in range(10))
-        _write_chunk(frag_df_, output_loc, group+'_'+frag_nam+'_'+rand_string)
+        _write_chunk(frag_df_, output_loc, '{}_{}_{}'.format(group, frag_nam, rand_string))
 
         # Output pseudo-reps
         pseudo_rep_1, pseudo_rep_2 = _assign_insertion_sites(frag_df_)
 
-        _write_chunk(pseudo_rep_1, output_loc, group+'_pseudorep1_'+frag_nam+'_'+rand_string)
-        _write_chunk(pseudo_rep_1, output_loc, group+'_pseudorep2_'+frag_nam+'_'+rand_string)
+        _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep1_{}_{}'.format(group, frag_nam, rand_string))
+        _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep2_{}_{}'.format(group, frag_nam, rand_string))
             
 # Demultiplex fragment file - parallel over chunks
 def demultiplex_fragment_file(fragment_fil, 
