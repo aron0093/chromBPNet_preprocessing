@@ -120,7 +120,6 @@ def _demultiplex_fragment_file(frag_df,
 
         # Skip empty chunks
         if frag_df_.shape[0]==0:
-            logging.warn('No barcodes were matched to a group in this chunk!')
             continue
 
         # Add random string to chunk since outputs are not in order
@@ -171,7 +170,7 @@ def demultiplex_fragment_file(fragment_fil,
     if output_loc is None:
         output_loc = os.path.dirname(fragment_fil)
     if len(os.listdir(output_loc)) > 0:
-        logging.warn('Remove outputs from any previous runs to avoid duplications.')
+        logging.warning('Remove outputs from any previous runs to avoid duplications.')
         
     # Make chunk generator
     with warnings.catch_warnings():
