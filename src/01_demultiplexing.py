@@ -354,8 +354,10 @@ if __name__=='__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('fragment_files', type=str)
-    parser.add_argument('-b','--barcodes', default=None, type=str)
+    parser.add_argument('fragment_files', type=str, 
+                        help='Tab separated fragment file or directory containing multiple files.')
+    parser.add_argument('-b','--barcodes', default=None, type=str, 
+                        help='Barcodes file or directory containing multiple files. One file per cell group.')
     parser.add_argument('-o', '--output_dir',  default='./', type=str)
     parser.add_argument('--chunksize', default=5000000, type=int)
     parser.add_argument('--num_cores', default=-1, type=int)
