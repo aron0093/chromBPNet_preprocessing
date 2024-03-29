@@ -110,7 +110,8 @@ def _process_fragment_file(frag_df,
                            barcodes_df,
                            frag_nam, 
                            output_loc,
-                           demultiplex=True):
+                           demultiplex=True,
+                           make_pseudoreps=True):
     
     '''
     Internal function for fragment file processing.
@@ -149,10 +150,11 @@ def _process_fragment_file(frag_df,
         _write_chunk(frag_df_, output_loc, '{}_{}_{}'.format(group, frag_nam, rand_string))
 
         # Output pseudo-reps
-        pseudo_rep_1, pseudo_rep_2 = _assign_insertion_sites(frag_df_)
+        if make_pseudoreps:
+            pseudo_rep_1, pseudo_rep_2 = _assign_insertion_sites(frag_df_)
 
-        _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep1_{}_{}'.format(group, frag_nam, rand_string))
-        _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep2_{}_{}'.format(group, frag_nam, rand_string))
+            _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep1_{}_{}'.format(group, frag_nam, rand_string))
+            _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep2_{}_{}'.format(group, frag_nam, rand_string))
             
 # Process fragment file - parallel over chunks
 def process_fragment_file(fragment_fil, 
@@ -160,6 +162,7 @@ def process_fragment_file(fragment_fil,
                           output_loc=None,
                           chunk_size=5000000,
                           demultiplex=True,
+                          make_pseudoreps=True,
                           n_jobs=-1):
 
     '''
@@ -182,6 +185,8 @@ def process_fragment_file(fragment_fil,
             Number of rows to read. Adjust based on available memory.
         demultiplex: bool (default: True)
             Demultiplex fragment files by cell groups
+        make_pseudoreps: bool (default:True)
+            Make pseudoreplicates by fragment splitting.
         n_jobs: int (default: -1)
             Number of cores to use.    
     '''  
@@ -216,7 +221,8 @@ def process_fragment_file(fragment_fil,
                                                                         barcodes_df,
                                                                         frag_nam, 
                                                                         output_loc,
-                                                                        demultiplex)\
+                                                                        demultiplex,
+                                                                        make_pseudoreps)\
                                     for chunk in tqdm(chunk_gen, 
                                                         unit='chunks', 
                                                         desc='Processing {}'\
@@ -382,20 +388,21 @@ if __name__=='__main__':
     # Run processing
     for fil in fragment_fils:
         demultiplex = not args.nodemux
+        make_pseudoreps = not args.nosplit
         process_fragment_file(fragment_fil=fil, 
-                                  barcodes_df=barcodes_df, 
-                                  output_loc=args.output_dir,
-                                  chunk_size=args.chunksize,
-                                  demultiplex=demultiplex,
-                                  n_jobs=args.num_cores)
+                              barcodes_df=barcodes_df, 
+                              output_loc=args.output_dir,
+                              chunk_size=args.chunksize,
+                              demultiplex=demultiplex,
+                              make_pseudoreps=make_pseudoreps,
+                              n_jobs=args.num_cores)
 
     # Collate data
     if not args.nocat:
-        make_pseudoreps = not args.nosplit
         collate_fragment_files(fil_loc=args.output_dir, 
-                            group_labels=barcodes_df.groups.unique().tolist(),
-                            make_pseudoreps=make_pseudoreps,
-                            remove_chunks=args.cleanup)
+                               group_labels=barcodes_df.groups.unique().tolist(),
+                               make_pseudoreps=make_pseudoreps,
+                               remove_chunks=args.cleanup)
     
     # Sort data
     if not args.nosort:
