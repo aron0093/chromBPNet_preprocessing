@@ -406,6 +406,10 @@ if __name__=='__main__':
                                make_pseudoreps=make_pseudoreps,
                                remove_chunks=args.cleanup)
     
+    # Raise warning if running sort with nocat
+    if args.nocat and not args.nosort:
+        logging.warning('Running sorting w/o concatenation. Resorting will be required after concat.')
+
     # Sort data
     if not args.nosort:
         sort_fragment_files(fil_loc=args.output_dir,
