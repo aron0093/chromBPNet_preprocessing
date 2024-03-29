@@ -3,6 +3,8 @@ import gzip
 import random
 import string
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -28,7 +30,7 @@ def read_barcode_files(*barcode_fils):
         barcodes_ = pd.read_csv(barcode_fil, 
                                 header=None, 
                                 names=['barcodes'])
-        barcodes_['groups'] = os.path.basename(barcode_fil)
+        barcodes_['groups'] = Path(barcode_fil).stem
         barcodes.append(barcodes_)
     barcodes_df = pd.concat(barcodes)
 
@@ -51,16 +53,27 @@ def _cat_files(fils, output_loc, output_nam):
                 f.write(infile.read())
     f.close()
 
+def _infer_labels(fil_list):
+
+    _ = [fil.split('_') for fil in fil_list]
+    for fil in _:
+        try: assert len(fil) !=3
+        except: raise ValueError('Group labels could not be inferred automatically.')
+    group_labels = np.unique([fil[0] for fil in _])
+    
+    return group_labels
+
 # Function to check fragment file formatting
 def _check_fragment_file_formatting(fragment_fil):
 
     '''
     Return first line idx without header text.
     '''
-
+    zipped=False
     try: 
         gzip.open(fragment_fil,'rt').read(1)
         fil = gzip.open(fragment_fil,'rt')
+        zipped=True
     except: fil = open(fragment_fil, 'r')
 
     for idx, line in enumerate(fil):
@@ -68,7 +81,7 @@ def _check_fragment_file_formatting(fragment_fil):
             continue
         else:
             logging.info('Skipping lines {} since they look like header text'.format(idx))
-            return idx
+            return idx, zipped
 
 # Make pseudo-replicates from fragment df
 def _assign_insertion_sites(frag_df):
@@ -92,27 +105,35 @@ def _assign_insertion_sites(frag_df):
 
     return pseudo_rep_1, pseudo_rep_2
 
-# Function to demultiplex - create temp chunks
-def _demultiplex_fragment_file(frag_df,
-                               barcodes_df,
-                               frag_nam, 
-                               output_loc):
+# Function to process - create temp chunks
+def _process_fragment_file(frag_df,
+                           barcodes_df,
+                           frag_nam, 
+                           output_loc,
+                           demultiplex=True):
     
     '''
-    Internal function for fragment file demultiplexing.
+    Internal function for fragment file processing.
     '''
 
     # Check if output dir exists
     os.makedirs(output_loc, exist_ok=True)
 
-    # Merge barcodes files to annotate group
-    frag_df = frag_df.merge(barcodes_df, 
-                            how='left', 
-                            left_on='barcodes', 
-                            right_on='barcodes')
+    if barcodes_df is not None:
+        # Merge barcodes files to annotate group
+        frag_df = frag_df.merge(barcodes_df, 
+                                how='left', 
+                                left_on='barcodes', 
+                                right_on='barcodes')
 
+    if barcodes_df is None or not demultiplex:
+        frag_df['groups'] = ''
+        group_labels=['']
+    else:
+        group_labels=frag_df.groups.unique()
+        
     # Output group-wise files for each chunk
-    for group in frag_df.groups.unique():
+    for group in group_labels:
 
         # Output fragments
         frag_df_ = frag_df.loc[frag_df.groups==group, 
@@ -133,15 +154,16 @@ def _demultiplex_fragment_file(frag_df,
         _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep1_{}_{}'.format(group, frag_nam, rand_string))
         _write_chunk(pseudo_rep_1, output_loc, '{}_pseudorep2_{}_{}'.format(group, frag_nam, rand_string))
             
-# Demultiplex fragment file - parallel over chunks
-def demultiplex_fragment_file(fragment_fil, 
-                              barcodes_df, 
-                              output_loc=None,
-                              chunk_size=10000,
-                              n_jobs=-1):
+# Process fragment file - parallel over chunks
+def process_fragment_file(fragment_fil, 
+                          barcodes_df, 
+                          output_loc=None,
+                          chunk_size=5000000,
+                          demultiplex=True,
+                          n_jobs=-1):
 
     '''
-    Demultiplex fragment file into cell-type groups.
+    Process fragment file into cell-type groups.
     This function will produce multiple files
     depending on chunk_size which have to be collated
     per group.
@@ -154,19 +176,23 @@ def demultiplex_fragment_file(fragment_fil,
             DataFrame with two columns.
             barcodes, groups
         output_loc: os.path (default: None)
-            Directory where demultiplexed chunks will be stored.
+            Directory where processed chunks will be stored.
             By default outputs are stored alongside input fragment files.
-        chunk_size: int
+        chunk_size: int (default: 5000000)
             Number of rows to read. Adjust based on available memory.
+        demultiplex: bool (default: True)
+            Demultiplex fragment files by cell groups
         n_jobs: int (default: -1)
             Number of cores to use.    
     '''  
     
     # Read fragment file 
-    start_row = _check_fragment_file_formatting(fragment_fil)
+    start_row, zipped = _check_fragment_file_formatting(fragment_fil)
 
     # Create output params
-    frag_nam = os.path.basename(fragment_fil)  
+    frag_nam = Path(fragment_fil).stem
+    if zipped:
+        frag_nam = Path(frag_nam).stem
     if output_loc is None:
         output_loc = os.path.dirname(fragment_fil)
     if len(os.listdir(output_loc)) > 0:
@@ -184,33 +210,36 @@ def demultiplex_fragment_file(fragment_fil,
                                 chunksize=chunk_size, 
                                 skiprows=start_row)
 
-        # Demultiplex fragment file  
+        # Process fragment file  
         Parallel(n_jobs=n_jobs, 
-                backend='threading')(delayed(_demultiplex_fragment_file)(chunk, 
+                backend='threading')(delayed(_process_fragment_file)(chunk, 
                                                                         barcodes_df,
                                                                         frag_nam, 
-                                                                        output_loc)\
+                                                                        output_loc,
+                                                                        demultiplex)\
                                     for chunk in tqdm(chunk_gen, 
                                                         unit='chunks', 
-                                                        desc='Demultiplexing {}'\
+                                                        desc='Processing {}'\
                                                         .format(frag_nam)))
 
 # Function to collate temp chunks
-def collate_fragment_file(fil_loc, 
-                          group_labels=None,
-                          remove_chunks=True):
+def collate_fragment_files(fil_loc, 
+                           group_labels=None,
+                           make_pseudoreps=True,
+                           remove_chunks=True):
 
     '''
-    Demultiplex fragment file into cell-groups.
-    This function will produce multiple files
-    depending on chunk_size which have to be collated
-    per group.
+    Collate processed chunks into
+    group wise fragment files. Also creates
+    pseudo-replicates for ChromBPNet.
 
     ARGS
         fil_loc: os.path
-            Directory where demultiplexed chunks are stored.
+            Directory where processed chunks are stored.
         group_labels: list (default: None)
             Cell-groups to collate. By default all groups are collated.
+        make_pseudoreps:
+            Make fragment split pseudoreplicates.
         remove_chunks: bool (default: True)
             Remove chunks after collation.
     ''' 
@@ -218,14 +247,11 @@ def collate_fragment_file(fil_loc,
     # Collate by group
     fils = os.listdir(fil_loc)
     if group_labels is None:
-        _ = [fil.split('_') for fil in fils]
-        for fil in _:
-            try: assert len(fil) !=3
-            except: raise ValueError('Group labels could not be inferred automatically.')
-        group_labels = np.unique([fil[0] for fil in _])
+        #TODO: Kinda shady - "_" delimited could cause issues.
+        group_labels = _infer_labels(fils)
 
     # Collate chunks per group
-    for group in tqdm(group_labels, unit='groups', desc='Collating demultiplexed chunks'):
+    for group in tqdm(group_labels, unit='groups', desc='Collating processed chunks'):
 
         # Collate fragments
         group_fils = [fil for fil in fils if group in fil and 'pseudorep' not in fil]
@@ -234,48 +260,116 @@ def collate_fragment_file(fil_loc,
         _cat_files(group_fils, fil_loc, fil_nam)
 
         # Collate pseudoreps
-        pseudorep1_fils = [fil for fil in fils if group in fil and 'pseudorep1' in fil]
+        if make_pseudoreps:
 
-        fil_nam = group+'_pseudorep1.txt'
-        _cat_files(pseudorep1_fils, fil_loc, fil_nam)
+            pseudorep1_fils = [fil for fil in fils if group in fil and 'pseudorep1' in fil]
 
-        pseudorep2_fils = [fil for fil in fils if group in fil and 'pseudorep2' in fil]
+            fil_nam = group+'_pseudorep1.txt'
+            _cat_files(pseudorep1_fils, fil_loc, fil_nam)
 
-        fil_nam = group+'_pseudorep2.txt'
-        _cat_files(pseudorep2_fils, fil_loc, fil_nam)
+            pseudorep2_fils = [fil for fil in fils if group in fil and 'pseudorep2' in fil]
 
-        fil_nam = group+'_pseudorepT.txt'
-        _cat_files([os.path.join(fil_loc, group+'_pseudorep1.txt'),
-                    os.path.join(fil_loc, group+'_pseudorep2.txt')],
-                    fil_loc, fil_nam)
+            fil_nam = group+'_pseudorep2.txt'
+            _cat_files(pseudorep2_fils, fil_loc, fil_nam)
+
+            fil_nam = group+'_pseudorepT.txt'
+            _cat_files([os.path.join(fil_loc, group+'_pseudorep1.txt'),
+                        os.path.join(fil_loc, group+'_pseudorep2.txt')],
+                        fil_loc, fil_nam)
 
         # Remove chunks
         if remove_chunks:
-            remove_fils = group_fils + pseudorep1_fils + pseudorep2_fils
+            remove_fils = group_fils 
+            if make_pseudoreps:
+                remove_fils+= pseudorep1_fils + pseudorep2_fils
             for chunk in remove_fils:
                 os.system('rm {}'.format(os.path.join(fil_loc, chunk)))
+
+# Sort fragment files
+def sort_fragment_files(fil_loc, 
+                        group_labels=None,
+                        chunk_size=5000000,
+                        n_jobs=-1,
+                        remove_unsorted=True):
+
+    '''
+    Sort collated group wise fragment files.
+
+    ARGS
+        fil_loc: os.path
+            Directory where processed chunks are stored.
+        group_labels: list (default: None)
+            Cell-groups to collate. By default all groups are collated.
+        chunk_size: int (default: 5000000)
+            Number of rows to read. Adjust based on available memory.
+        n_jobs: int (default: -1)
+            Number of cores to use.  
+        remove_unsorted: bool (default: True)
+            Remove unsorted files after sorting.
+    ''' 
+    
+    # Infer group labels
+    fils = os.listdir(fil_loc)
+    if group_labels is not None:
+        sel_fils = fils
+    else:
+        sel_fils = []
+        for group in group_labels:
+            sel_fils += [fil for fil in fils if group in fil]
+    
+    # Select files
+    #TODO: Replace with check for sorting and tab separation
+    sel_fils = [fil for fil in sel_fils if 'sorted' not in fil]
+    sel_fils =  [fil for fil in sel_fils if '.py' not in fil]
+    
+    # Estimate of buffer size in GB
+    buffer_size = int((6/5000000)*chunk_size)
+    if n_jobs < 0:
+        num_threads = os.cpu_count() + n_jobs + 1
+    elif n_jobs > 0:
+        num_threads = n_jobs
+
+    # Sort fils
+    for fil in tqdm(sel_fils, 
+                    unit='files', 
+                    desc='Sorting fragment files.'):
+        output_fil = fil+'_sorted.txt'
+        os.system('sort -k 1,1 -k 2,2n -S '+ \
+                  '{}G -u --parallel={} {} -o {}'.format(buffer_size,
+                                                         num_threads,
+                                                         os.path.join(fil_loc, fil),
+                                                         os.path.join(fil_loc, output_fil)))
+    
+        # Remove pre-sorted files
+        if remove_unsorted:
+                os.system('rm {}'.format(os.path.join(fil_loc, fil)))
 
 if __name__=='__main__':
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument('fragment_files', type=str)
-    parser.add_argument('barcodes', type=str)
+    parser.add_argument('-b','--barcodes', default=None, type=str)
     parser.add_argument('-o', '--output_dir',  default='./', type=str)
     parser.add_argument('--chunksize', default=5000000, type=int)
     parser.add_argument('--num_cores', default=-1, type=int)
-    parser.add_argument('--cleanup', action='store_true')
+    parser.add_argument('--cleanup', default=False, action='store_true')
+    parser.add_argument('--nodemux', default=False, action='store_true')
+    parser.add_argument('--nosplit', default=False, action='store_true')    
+    parser.add_argument('--nosort', default=False, action='store_true')
 
     args = parser.parse_args()
 
     # Read in barcodes (dir or file)
-    if os.path.isfile(args.barcodes):
-        barcode_fils = [args.barcodes]
-    elif os.path.isdir(args.barcodes):
-        barcode_fils = os.listdir(args.barcodes)
-        barcode_fils = [os.path.join(args.barcodes, fil) for fil in barcode_fils]
+    if barcodes is not None:
+        if os.path.isfile(args.barcodes):
+            barcode_fils = [args.barcodes]
+        elif os.path.isdir(args.barcodes):
+            barcode_fils = os.listdir(args.barcodes)
+            barcode_fils = [os.path.join(args.barcodes, fil) for fil in barcode_fils]
 
-    barcodes_df = read_barcode_files(*barcode_fils)
+        barcodes_df = read_barcode_files(*barcode_fils)
+    else: barcodes_df = None
 
     # Read in fragments (dir or files)
     if os.path.isfile(args.fragment_files):
@@ -284,15 +378,25 @@ if __name__=='__main__':
         fragment_fils = os.listdir(args.fragment_files)
         fragment_fils = [os.path.join(args.fragment_files, fil) for fil in fragment_fils]
 
-    # Run demultiplexing
+    # Run processing
     for fil in fragment_fils:
-        demultiplex_fragment_file(fragment_fil=fil, 
+        demultiplex = not args.nodemux
+        process_fragment_file(fragment_fil=fil, 
                                   barcodes_df=barcodes_df, 
                                   output_loc=args.output_dir,
                                   chunk_size=args.chunksize,
+                                  demultiplex=demultiplex,
                                   n_jobs=args.num_cores)
 
     # Collate data
-    collate_fragment_file(fil_loc=args.output_dir, 
-                          group_labels=barcodes_df.groups.unique().tolist(),
-                          remove_chunks=args.cleanup)
+    make_pseudoreps = not args.nosplit
+    collate_fragment_files(fil_loc=args.output_dir, 
+                           group_labels=barcodes_df.groups.unique().tolist(),
+                           make_pseudoreps=make_pseudoreps,
+                           remove_chunks=args.cleanup)
+    
+    # Sort data
+    if not args.nosort:
+        sort_fragment_files(fil_loc=args.output_dir,
+                            group_labels=barcodes_df.groups.unique().tolist(),
+                            remove_unsorted=args.cleanup)
