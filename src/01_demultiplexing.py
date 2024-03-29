@@ -355,13 +355,14 @@ if __name__=='__main__':
     parser.add_argument('--num_cores', default=-1, type=int)
     parser.add_argument('--cleanup', default=False, action='store_true')
     parser.add_argument('--nodemux', default=False, action='store_true')
+    parser.add_argument('--nocat', default=False, action='store_true')
     parser.add_argument('--nosplit', default=False, action='store_true')    
     parser.add_argument('--nosort', default=False, action='store_true')
 
     args = parser.parse_args()
 
     # Read in barcodes (dir or file)
-    if barcodes is not None:
+    if args.barcodes is not None:
         if os.path.isfile(args.barcodes):
             barcode_fils = [args.barcodes]
         elif os.path.isdir(args.barcodes):
@@ -389,11 +390,12 @@ if __name__=='__main__':
                                   n_jobs=args.num_cores)
 
     # Collate data
-    make_pseudoreps = not args.nosplit
-    collate_fragment_files(fil_loc=args.output_dir, 
-                           group_labels=barcodes_df.groups.unique().tolist(),
-                           make_pseudoreps=make_pseudoreps,
-                           remove_chunks=args.cleanup)
+    if not args.nocat:
+        make_pseudoreps = not args.nosplit
+        collate_fragment_files(fil_loc=args.output_dir, 
+                            group_labels=barcodes_df.groups.unique().tolist(),
+                            make_pseudoreps=make_pseudoreps,
+                            remove_chunks=args.cleanup)
     
     # Sort data
     if not args.nosort:
