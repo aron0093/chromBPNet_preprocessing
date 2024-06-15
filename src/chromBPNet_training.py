@@ -56,4 +56,5 @@ return_code = os.system('chrombpnet pipeline '+ \
                         '-n {} '.format(os.path.join(args.output_dir, 'data')+'_negatives.bed') + \
                         '-fl {} '.format(args.fold_jsons) + \
                         '-b {} '.format(bias_model_path)+ \
-                        '-o {} '.format(os.path.join(args.output_dir, 'chrombpnet_model/')))
+                        '-o {} '.format(os.path.join(args.output_dir, 'chrombpnet_model/'))+ \
+                        '-fp {}'.format(args.label))

@@ -613,7 +613,7 @@ if __name__=='__main__':
 
         # If no demux and no make_pseudoreps then dont chunk file
         if demultiplex or make_pseudoreps:
-            track_chunks.append(process_fragment_file(fragment_fil=fil, 
+            track_chunks.extend(process_fragment_file(fragment_fil=fil, 
                                                       barcodes_df=barcodes_df, 
                                                       output_loc=args.output_dir,
                                                       chunk_size=args.chunksize,
@@ -626,8 +626,10 @@ if __name__=='__main__':
 
     # Compile file list for collation
     if demultiplex or make_pseudoreps:
+        # If these chunks are produced at output
         chunk_dir = args.output_dir
     else:
+        # If this then chunks are in the input dir
         chunk_dir = args.fragment_files
 
     frag_chunks = []
@@ -652,17 +654,18 @@ if __name__=='__main__':
             track_cats = group_labels
         logging.warning('Running sorting w/o concatenation. Resorting will be required after concat.')
 
-        # Compile list for sorting
-        if demultiplex or make_pseudoreps:
-            cat_dir = args.out_dir
-        else:
-            cat_dir = args.fragment_files
+    # Compile list for sorting
+    if demultiplex or make_pseudoreps:
+        cat_dir = args.out_dir
+    else:
+        cat_dir = args.fragment_files
 
-        frag_files = []
-        for fil in os.listdir(cat_dir):
-            for nam in track_cats:
-                if nam in fil:
-                    frag_files.append(os.path.join(cat_dir, fil))
+    frag_files = []
+    for fil in os.listdir(cat_dir):
+        # If skip all previous steps then filtered by group label here
+        for nam in track_cats:
+            if nam in fil:
+                frag_files.append(os.path.join(cat_dir, fil))
 
     # Sort data
     if not args.nosort:
