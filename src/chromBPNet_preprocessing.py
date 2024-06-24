@@ -632,14 +632,15 @@ if __name__=='__main__':
         # If this then chunks are in the input dir
         chunk_dir = args.fragment_files
 
-    frag_chunks = []
-    for fil in os.listdir(chunk_dir):
-        for chunk in track_chunks:
-            if chunk in fil:
-                frag_chunks.append(os.path.join(chunk_dir,fil))
-
     # Collate data
     if not args.nocat:
+
+        frag_chunks = []
+        for fil in os.listdir(chunk_dir):
+            for chunk in track_chunks:
+                if chunk in fil:
+                    frag_chunks.append(os.path.join(chunk_dir,fil))
+                    
         track_cats = collate_fragment_files(*frag_chunks, 
                                             group_labels=group_labels,
                                             output_loc=args.output_dir,
@@ -656,16 +657,17 @@ if __name__=='__main__':
 
     # Compile list for sorting
     if demultiplex or make_pseudoreps:
-        cat_dir = args.out_dir
+        cat_dir = args.output_dir
     else:
         cat_dir = args.fragment_files
 
-    frag_files = []
-    for fil in os.listdir(cat_dir):
-        # If skip all previous steps then filtered by group label here
-        for nam in track_cats:
-            if nam in fil:
-                frag_files.append(os.path.join(cat_dir, fil))
+    if not args.nocat:
+        frag_files = []
+        for fil in os.listdir(cat_dir):
+            # If skip all previous steps then filtered by group label here
+            for nam in track_cats:
+                if nam in fil:
+                    frag_files.append(os.path.join(cat_dir, fil))
 
     # Sort data
     if not args.nosort:
@@ -673,6 +675,7 @@ if __name__=='__main__':
                                            output_loc=args.output_dir,
                                            n_jobs=args.threads,
                                            remove_unsorted=args.cleanup)
+        print(track_sorted)
     
     # Call peaks and make peakset
     if not args.nopeaks:
