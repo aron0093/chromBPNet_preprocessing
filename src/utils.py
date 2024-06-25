@@ -41,7 +41,7 @@ def concatenate_fragments(*fragment_fils,
     f.close()
 
     if remove_fils:
-        for fil in remove_fils:
+        for fil in fragment_fils:
             return_code=os.system('rm {}'.format(fil))
 
 # Sort fragment file
@@ -116,6 +116,6 @@ def create_chunk_generator(fragment_fil,
 def write_chunk(fragments_df, output_path):
 
     fragments_df.to_csv(output_path,
-                         sep='\t', 
-                         header=False, 
-                         index=False)
+                        sep='\t', 
+                        header=False, 
+                        index=False)
