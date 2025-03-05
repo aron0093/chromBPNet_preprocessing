@@ -3,7 +3,30 @@ import gzip
 
 import pandas as pd
 
+from sinto.fragments import fragments
+
 import warnings
+
+# Make fragment file from bam
+def bam_to_fragments(bam_fil, fragment_fil, min_mapq=30, cellbarcode=None,
+    chromosomes=None, readname_barcode=None, cells=None, max_distance=5000,
+    min_distance=10, chunksize=5000000, shifts=[4, -4], collapse_within=False, 
+    n_jobs=-1):
+
+    '''
+    https://github.com/timoast/sinto/blob/master/sinto/fragments.py
+
+    '''
+
+    if n_jobs==-1:
+        nproc=os.cpu_count()
+    else:
+        nproc=n_jobs
+
+    fragments(bam_fil, fragment_fil, min_mapq=min_mapq, nproc=nproc, 
+              cellbarcode=cellbarcode, chromosomes=chromosomes, readname_barcode=readname_barcode, 
+              cells=cells, max_distance=max_distance, min_distance=min_distance, chunksize=chunksize, 
+              shifts=shifts, collapse_within=collapse_within)
 
 # Function to check fragment file formatting
 def check_formatting(fragment_fil):
@@ -27,7 +50,7 @@ def check_formatting(fragment_fil):
 
 # Concatenate fragment files
 def concatenate_fragments(*fragment_fils, 
-                          output_path,
+                          output_path=None,
                           remove_fils=False):
 
     '''
