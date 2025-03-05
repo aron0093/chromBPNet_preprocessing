@@ -36,12 +36,15 @@ def assign_insertion_sites(fragments_df):
 # Write out fragment file chunks
 def _demux_fragments(chunk, 
                      barcodes, 
+                     allowed_chrs,
                      output_loc,
                      make_pseudoreps):
     
     # Gen random string
     rand_string = ''.join(random.choice(string.ascii_uppercase)\
                     for i in range(10))
+
+    chunk = chunk.loc[chunk.chr.isin(allowed_chrs)]
 
     if barcodes is not None:
         chunk = chunk.loc[chunk.barcodes.isin(barcodes)]
@@ -109,6 +112,7 @@ def demux_fragments(fragment_fil,
     track_chunks.append(Parallel(n_jobs=n_jobs, 
                                  backend='threading')(delayed(_demux_fragments)(chunk, 
                                                                                 barcodes,
+                                                                                allowed_chrs,
                                                                                 output_loc,
                                                                                 make_pseudoreps,
                                                                                 ) \
